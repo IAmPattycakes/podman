@@ -860,6 +860,56 @@ spec:
 }
 
 # bats test_tags=ci:parallel
+@test "podman kube play with executable configmap volume" {
+    # Files written into a configmap volume must be closed before the pod
+    # starts, otherwise exec'ing them fails with ETXTBSY (text file busy).
+    cmname="cm-$(safename)"
+    podname="p-$(safename)"
+    ctrname="c-$(safename)"
+
+    fname="$PODMAN_TMPDIR/play_kube_configmap_exec_$(random_string 6).yaml"
+    cat <<EOF >$fname
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $cmname
+data:
+  script.sh: |
+    #!/bin/sh
+    true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $podname
+spec:
+  restartPolicy: Never
+  containers:
+  - name: $ctrname
+    image: $IMAGE
+    command:
+    - /scripts/script.sh
+    volumeMounts:
+    - name: scripts
+      mountPath: /scripts
+  volumes:
+  - name: scripts
+    configMap:
+      name: $cmname
+      defaultMode: 0755
+EOF
+
+    # The script must be the container command: going through
+    # 'sh -c' hides the failure with the busybox sh in $IMAGE.
+    run_podman kube play $fname
+    run_podman wait $podname-$ctrname
+    is "$output" "0" "exit status: executing script from configmap volume"
+
+    run_podman kube down $fname
+    run_podman volume rm $cmname
+}
+
+# bats test_tags=ci:parallel
 @test "podman kube with --authfile=/tmp/bogus" {
     _write_test_yaml
     bogus=$PODMAN_TMPDIR/bogus-authfile

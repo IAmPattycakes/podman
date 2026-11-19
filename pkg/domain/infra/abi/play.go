@@ -934,14 +934,18 @@ func (ic *ContainerEngine) playKubePod(ctx context.Context, podName string, podY
 				if err != nil {
 					return nil, nil, fmt.Errorf("cannot create file %q at volume mountpoint %q: %w", k, mountPoint, err)
 				}
-				defer f.Close()
 				_, err = f.Write(v)
 				if err != nil {
+					f.Close()
 					return nil, nil, err
 				}
 				// Set file permissions
 				if err := f.Chmod(os.FileMode(defaultMode)); err != nil {
+					f.Close()
 					return nil, nil, err
+				}
+				if err := f.Close(); err != nil { 
+					return nil, nil, err 
 				}
 			}
 		} else if v.Type == kube.KubeVolumeTypeImage {
